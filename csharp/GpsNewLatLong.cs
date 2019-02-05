@@ -1,76 +1,87 @@
 using System;
 
-public class GpsNewLatLong {
+/// <summary>
+/// Originally written around 2011-03-17 to calculate a new position, based on a
+/// heading and distance.
+/// </summary>
+public class GpsNewLatLong
+{
+    public static void Main()
+    {
+        var oldReading = new GpsReading(null, DateTime.Now.ToUniversalTime(), 46.03695, -118.67283, 90f, 5f, 0);
 
-	public static void Main()
-	{
-		GpsReading oldReading = new GpsReading(null, DateTime.Now.ToUniversalTime(),
-			46.03695, -118.67283, (float) 90, 5, 0);
+        Console.WriteLine("Before: " + oldReading);
 
-		Console.WriteLine("Before: " + oldReading);
+        var reading = GetNewLatLong(oldReading, 45d, 1000d);
 
-		GpsReading reading = GetNewLatLong(oldReading, 45, 1000);
+        Console.WriteLine("After: " + reading);
+    }
 
-		Console.WriteLine("After: " + reading);
-	}
+    /// <summary>
+    /// Given a current GPS reading, a heading, and a distance traveled, compute
+    /// a new GPS reading.
+    /// </summary>
+    /// <remarks>
+    /// Taken from http://www.movable-type.co.uk/scripts/latlong.html
+    /// </remarks>
+    /// <param name="oldReading">Old GPS reading</param>
+    /// <param name="headingInDegrees">Heading in degrees - -360 - 360</param>
+    /// <param name="distanceInMeters">Distance traveled in meters</param>
+    private static GpsReading GetNewLatLong(GpsReading oldReading, double headingInDegrees, double distanceInMeters)
+    {
+        const double EarthRadiusMeters = 6371000d;
+        double angularDist = distanceInMeters / EarthRadiusMeters;
+        double newHeadingDeg = oldReading.Heading + headingInDegrees;
+        if (newHeadingDeg >= 360d) {
+            newHeadingDeg -= 360d;
+        }
+        if (newHeadingDeg < 0d) {
+            newHeadingDeg += 360d;
+        }
 
-		/// <remarks>
-		/// Taken from http://www.movable-type.co.uk/scripts/latlong.html
-		/// </remarks>
-		private static GpsReading GetNewLatLong(GpsReading oldReading, double heading, double dist)
-		{
-			double EarthRadiusMeters = 6371000d;
-			double angularDist = dist / EarthRadiusMeters;
-			double newHeadingDeg = oldReading.Heading + heading;
-			if (newHeadingDeg >= 360) {
-				newHeadingDeg -= 360;
-			}
-			if (newHeadingDeg < 0) {
-				newHeadingDeg += 360;
-			}
+        //* Convert to radians
+        double newHeading = newHeadingDeg * Math.PI / 180d;
+        double lat = oldReading.Latitude * Math.PI / 180d;
+        double lon = oldReading.Longitude * Math.PI / 180d;
 
-			//* Convert to radians
-			double newHeading = newHeadingDeg * Math.PI / 180;
-			double lat = oldReading.Latitude * Math.PI / 180;
-			double lon = oldReading.Longitude * Math.PI / 180;
+        double lat2 =
+            Math.Asin(Math.Sin(lat) * Math.Cos(angularDist)
+                + Math.Cos(lat) * Math.Sin(angularDist) * Math.Cos(newHeading));
+        double lon2 = lon
+            + Math.Atan2(Math.Sin(newHeading) * Math.Sin(angularDist) * Math.Cos(lat),
+                 Math.Cos(angularDist) - Math.Sin(lat) * Math.Sin(lat2));
 
-			double lat2 =
-				Math.Asin(Math.Sin(lat) * Math.Cos(angularDist)
-					+ Math.Cos(lat) * Math.Sin(angularDist) * Math.Cos(newHeading));
-			double lon2 = lon
-				+ Math.Atan2(Math.Sin(newHeading) * Math.Sin(angularDist) * Math.Cos(lat),
-					 Math.Cos(angularDist) - Math.Sin(lat) * Math.Sin(lat2));
+        // normalise to -180...+180
+        lon2 = (lon2 + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+        //* Convert back to degrees
+        lat2 *= 180 / Math.PI;
+        lon2 *= 180 / Math.PI;
 
-			// normalise to -180...+180
-			lon2 = (lon2 + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
-			//* Convert back to degrees
-			lat2 *= 180 / Math.PI;
-			lon2 *= 180 / Math.PI;
+        GpsReading reading = new GpsReading(null, DateTime.Now.ToUniversalTime(),
+            lat2, lon2, (float)newHeadingDeg, (float)oldReading.Speed, oldReading.Odometer);
 
-			GpsReading reading = new GpsReading(null, DateTime.Now.ToUniversalTime(),
-				lat2, lon2, (float) newHeadingDeg, (float) oldReading.Speed, oldReading.Odometer);
-
-			return reading;
-		}
-
-
-
+        return reading;
+    }
 }
 
-	public class GpsReading
-	{
-		public AirLinkPacket RawData;
-        public DateTime TimeStampUTC;
-        public double Latitude;
-        public double Longitude;
-        public float Heading;
-        public double Speed;
-		public long Odometer;
-		public int Satellites;
-		public bool Fix; //Tracking/Not Tracking
+/// <summary>
+/// Hold a single GPS reading, along with any extra data that might be available from
+/// the AirLink modem.
+/// </summary>
+public class GpsReading
+{
+    public AirLinkPacket RawData { get; set; }
+    public DateTime TimeStampUTC { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public float Heading { get; set; }
+    public double Speed { get; set; }
+    public long Odometer { get; set; }
+    public int Satellites { get; set; }
+    public bool Fix { get; set; } //Tracking/Not Tracking
 
-		// Auxiliary data, not set here
-        public bool Historic = false;
+    // Auxiliary data, not set here
+    public bool Historic = false;
 
 #if HDOP
 		public int HDOP = 0;
@@ -122,26 +133,26 @@ public class GpsNewLatLong {
 		}
 #endif
 
-		public override string ToString()
-        {
-			string str = String.Format("{0}, {1}, {2}, {3}, {4}, {5}", TimeStampUTC, Latitude, Longitude, Heading, Speed, Odometer);
-			return str;
-        }
+    public GpsReading(AirLinkPacket rawData, DateTime timestampUTC, double lat, double lon, float heading, float speed, long odometer)
+    {
+        this.RawData = rawData;
+        this.TimeStampUTC = timestampUTC;
+        this.Latitude = lat;
+        this.Longitude = lon;
+        this.Heading = heading;
+        this.Speed = speed;
+        this.Odometer = odometer;
+    }
 
-        public GpsReading() { }
+    public override string ToString()
+    {
+        return string.Format($"{TimeStampUTC}, {Latitude}, {Longitude}, {Heading}, {Speed}, {Odometer}",
+            TimeStampUTC, Latitude, Longitude, Heading, Speed, Odometer);
+    }
+}
 
-		public GpsReading(AirLinkPacket rawData, DateTime timestampUTC, double lat, double lon, float heading, float speed, long odometer)
-        {
-            this.RawData = rawData;
-            this.TimeStampUTC = timestampUTC;
-            this.Latitude = lat;
-            this.Longitude = lon;
-            this.Heading = heading;
-            this.Speed = speed;
-			this.Odometer = odometer;
-		}
-	}
-
-	public class AirLinkPacket
-	{
-	}
+//* Dummy class that wouuld normally contain code for parsing AirLink packets
+//* from Sierra Wireless modems
+public class AirLinkPacket
+{
+}
